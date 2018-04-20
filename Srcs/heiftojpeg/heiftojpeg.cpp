@@ -96,7 +96,7 @@ static void addExif(ImageFileReaderInterface::DataVector exifData, string fileNa
         cout << "wrote " << exifData.size() << " bytes of EXIF to " << exifFileName << endl;
     }
     chrono::steady_clock::time_point begin = chrono::steady_clock::now();
-    int retval = system(("exiftool -m -overwrite_original " + fileName + " -tagsFromFile " + exifFileName).c_str());
+    int retval = system(("exiftool -m -overwrite_original " + fileName + " -tagsFromFile " + exifFileName + " -x Orientation").c_str());
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
     remove(exifFileName.c_str());
     string rm = "rmdir ";
@@ -118,6 +118,17 @@ static void processFile(char *filename, char *outputFileName)
 
     const auto& properties = reader.getFileProperties();
     const uint32_t contextId = properties.rootLevelMetaBoxProperties.contextId;
+
+    const uint32_t itemId = reader.getCoverImageItemId(contextId);
+    const auto itemProperties = reader.getItemProperties(contextId, itemId);
+
+    unsigned int rotation = 0;
+    for (const auto& property : itemProperties) {
+        if (property.type == ImageFileReaderInterface::ItemPropertyType::IROT) {
+            rotation = reader.getPropertyIrot(contextId, property.index).rotation;
+            break;
+        }
+    }
 
     ImageFileReaderInterface::IdVector gridItemIds;
     reader.getItemListByType(contextId, "grid", gridItemIds);
@@ -212,6 +223,14 @@ static void processFile(char *filename, char *outputFileName)
             image.zoom(Magick::Geometry(scaleFactor * gridItem.outputWidth, scaleFactor * gridItem.outputHeight));
             timingName += "+zoom";
         }
+    }
+
+    if (rotation != 0) {
+        if (VERBOSE) {
+            cout << "rotating by " << (360 - rotation) << "\n";
+        }
+        image.rotate(double(360 - rotation));
+        timingName += "+rotate";
     }
     image.write(outputFileName);
     chrono::steady_clock::time_point end = chrono::steady_clock::now();
